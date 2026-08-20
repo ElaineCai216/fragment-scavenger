@@ -49,9 +49,33 @@ function applyTone(root, date) {
   root.style.setProperty('--bg-light', a.light);
 }
 
+// 微尘：极慢上浮的细小光点，营造空气感
+function spawnDust(root) {
+  const layer = root.querySelector('.bg-dust');
+  if (!layer) return;
+  const count = 16;
+  layer.innerHTML = '';
+  for (let i = 0; i < count; i++) {
+    const d = document.createElement('span');
+    d.className = 'dust';
+    const size = 2 + Math.random() * 4;
+    d.style.width = size + 'px';
+    d.style.height = size + 'px';
+    d.style.left = Math.random() * 100 + '%';
+    d.style.top = 55 + Math.random() * 45 + '%';
+    d.style.setProperty('--drift', (Math.random() * 180 - 90).toFixed(1) + 'px');
+    d.style.setProperty('--rise', (Math.random() * 140 + 60).toFixed(1) + 'px');
+    d.style.setProperty('--o', (0.25 + Math.random() * 0.4).toFixed(2));
+    d.style.animationDuration = (16 + Math.random() * 20).toFixed(1) + 's';
+    d.style.animationDelay = (-Math.random() * 24).toFixed(1) + 's';
+    layer.appendChild(d);
+  }
+}
+
 export function initBackground(root) {
   if (!root) root = document.documentElement;
   applyTone(root, new Date());
+  spawnDust(root);
   const timer = setInterval(() => applyTone(root, new Date()), 60000);
   return () => clearInterval(timer);
 }

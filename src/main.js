@@ -253,6 +253,7 @@ function renderCard(f) {
   }
   if (f.note) card.append(el('div', 'scrap-note', f.note));
 
+  card.append(el('span', 'view-hint', '↗'));
   const meta = el('div', 'scrap-meta');
   meta.append(el('span', 'scrap-mood', (f.moods && f.moods.length ? f.moods.join(' · ') : '未分类')));
   meta.append(el('span', 'scrap-type', TYPE_LABEL[f.type] || f.type));

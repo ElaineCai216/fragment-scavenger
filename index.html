@@ -9,9 +9,13 @@
 <body>
   <!-- 动态背景层 -->
   <div class="bg" aria-hidden="true">
+    <div class="bg-blob b1"></div>
+    <div class="bg-blob b2"></div>
     <div class="bg-light"></div>
+    <div class="bg-shaft"></div>
     <div class="bg-vignette"></div>
     <div class="bg-grain"></div>
+    <div class="bg-dust"></div>
   </div>
 
   <header class="topbar">
@@ -70,7 +74,10 @@
       </div>
 
       <div class="tab-body" id="tab-text">
-        <textarea id="add-text" rows="4" placeholder="一句书摘、一个歌名、突然冒出的话…"></textarea>
+        <div class="note-wrap">
+          <div class="note-tape"></div>
+          <textarea id="add-text" class="note-paper" rows="5" placeholder="一句书摘、一个歌名、突然冒出的话…"></textarea>
+        </div>
       </div>
       <div class="tab-body hidden" id="tab-photo">
         <label class="file-drop" for="add-file">

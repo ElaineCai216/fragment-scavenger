@@ -444,3 +444,183 @@ button {
 /* 层级：编辑/确认要盖在幻灯片之上 */
 #edit-overlay { z-index: 70; }
 #confirm-overlay { z-index: 80; }
+
+/* ============ 更动态的背景 ============ */
+.bg-light {
+  background:
+    radial-gradient(58% 72% at 30% 20%, var(--bg-light), transparent 62%),
+    radial-gradient(42% 58% at 76% 76%, rgba(255,255,255,0.08), transparent 60%);
+  animation: breathe 18s ease-in-out infinite alternate;
+}
+.bg-light::after {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(46% 64% at 68% 28%, rgba(255,246,214,0.14), transparent 62%);
+  animation: breatheAlt 26s ease-in-out infinite alternate-reverse;
+}
+@keyframes breathe {
+  from { transform: translate(-1.6%, -1%) scale(1.03); opacity: 0.7; }
+  to   { transform: translate(1.8%, 1.4%) scale(1.09); opacity: 1; }
+}
+@keyframes breatheAlt {
+  from { transform: translate(2%, 1%) scale(1.05); opacity: 0.55; }
+  to   { transform: translate(-2.4%, -1.6%) scale(1.12); opacity: 1; }
+}
+
+/* 缓慢扫过的光柱 */
+.bg-shaft {
+  position: absolute; inset: -35%;
+  background: linear-gradient(115deg, transparent 41%, rgba(255,250,225,0.13) 49%, rgba(255,250,225,0.02) 55%, transparent 62%);
+  animation: shaftMove 44s ease-in-out infinite alternate;
+}
+@keyframes shaftMove {
+  from { transform: translateX(-16%) rotate(0.4deg); }
+  to   { transform: translateX(16%) rotate(-0.4deg); }
+}
+
+/* 大块缓慢晕染色块（非漂浮涂鸦，是空气感色雾） */
+.bg-blob {
+  position: absolute; border-radius: 50%;
+  filter: blur(70px); opacity: 0.12; will-change: transform;
+  pointer-events: none;
+}
+.bg-blob.b1 { width: 58vmax; height: 58vmax; background: #c9a76a; top: -14%; left: -12%; animation: blobA 52s ease-in-out infinite alternate; }
+.bg-blob.b2 { width: 50vmax; height: 50vmax; background: #8fa9c4; bottom: -16%; right: -10%; animation: blobB 66s ease-in-out infinite alternate; }
+@keyframes blobA {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(9vw, 6vh) scale(1.16); }
+}
+@keyframes blobB {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(-8vw, -5vh) scale(0.9); }
+}
+
+/* 漂浮微尘 */
+.bg-dust { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.dust {
+  position: absolute; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.95), rgba(255,255,255,0) 70%);
+  filter: blur(0.6px);
+  opacity: 0;
+  animation: dustFloat linear infinite;
+}
+@keyframes dustFloat {
+  0%   { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
+  14%  { opacity: var(--o, 0.4); }
+  86%  { opacity: var(--o, 0.4); }
+  100% { transform: translate3d(var(--drift, 40px), calc(-1 * var(--rise, 80px)), 0) scale(0.55); opacity: 0; }
+}
+
+/* ============ 便签纸文字输入框 ============ */
+.note-wrap {
+  position: relative;
+  transform: rotate(-0.6deg);
+  margin: 4px 2px 8px;
+}
+.note-tape {
+  position: absolute; top: -9px; left: 50%;
+  width: 96px; height: 24px;
+  transform: translateX(-50%) rotate(-2deg);
+  background: rgba(235, 218, 156, 0.72);
+  border-left: 1px dashed rgba(150,130,80,0.45);
+  border-right: 1px dashed rgba(150,130,80,0.45);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  z-index: 2;
+  pointer-events: none;
+}
+.note-paper {
+  display: block; width: 100%;
+  font-family: var(--hand); font-size: 17px; line-height: 34px;
+  color: #4a3e2c;
+  padding: 12px 14px 8px;
+  border: 1px solid rgba(120, 95, 55, 0.35);
+  border-radius: 4px;
+  resize: vertical; min-height: 150px;
+  background-image:
+    repeating-linear-gradient(to bottom, transparent 0 33px, rgba(120, 90, 50, 0.22) 33px 34px),
+    linear-gradient(to right, transparent 42px, rgba(190, 90, 70, 0.30) 42px 43px, transparent 43px),
+    linear-gradient(#fdf6e3, #f6ebd0);
+  background-size: auto, auto, auto;
+  box-shadow: 0 3px 10px rgba(90, 70, 40, 0.18), inset 0 0 0 1px rgba(255,255,255,0.5);
+  outline: none;
+}
+.note-paper::placeholder { color: #8a7a5e; opacity: 0.75; }
+.note-paper:focus { box-shadow: 0 4px 16px rgba(90, 70, 40, 0.28), inset 0 0 0 1px rgba(255,255,255,0.5); }
+
+/* 其余输入框统一纸感 + 手写体 */
+.field input, .field textarea {
+  font-family: var(--hand); font-size: 16px;
+  background: rgba(253, 246, 227, 0.6);
+  border: 1px solid rgba(120, 95, 55, 0.4);
+  border-bottom: 2px solid rgba(120, 95, 55, 0.5);
+}
+.field input:focus, .field textarea:focus {
+  background: rgba(255, 250, 235, 0.9);
+  border-color: var(--bg-ink);
+}
+
+/* 卡片「查看」提示 */
+.scrap-card .view-hint {
+  position: absolute; top: 8px; right: 10px;
+  font-size: 14px; opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+.scrap-card .scrap-photo img { transition: transform 0.3s ease; }
+
+/* ============ 鼠标悬停交互 ============ */
+@media (hover: hover) {
+  .scrap-card { transition: transform 0.18s ease, box-shadow 0.25s ease; }
+  .scrap-card:hover {
+    transform: rotate(0deg) translateY(-5px) scale(1.01);
+    box-shadow: 0 14px 30px rgba(60, 45, 25, 0.24);
+    z-index: 2;
+  }
+  .scrap-card:hover .scrap-photo img { transform: scale(1.04); }
+  .scrap-card:hover .scrap-mood {
+    transform: rotate(-3deg) scale(1.1);
+    background: var(--mood-ink, var(--bg-ink));
+    color: var(--paper, var(--bg-paper));
+  }
+  .scrap-card:hover .view-hint { opacity: 0.75; transform: translateY(0); }
+  .scrap-mood { transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease; }
+
+  .mini-btn { transition: transform 0.12s ease, background 0.18s ease, color 0.18s ease, border-color 0.18s ease; }
+  .mini-btn:hover { background: var(--bg-ink); color: var(--bg-paper); border-color: var(--bg-ink); }
+  .mini-btn.danger:hover { background: #a8503c; color: #fff; border-color: #a8503c; }
+
+  .primary-btn { transition: transform 0.12s ease, box-shadow 0.2s ease, opacity 0.2s ease; }
+  .primary-btn:hover { transform: translateY(-2px); box-shadow: 0 7px 16px rgba(0, 0, 0, 0.26); }
+
+  .round-btn { transition: transform 0.15s ease, background 0.2s ease, color 0.2s ease; }
+  .round-btn:hover { transform: rotate(10deg) scale(1.1); background: var(--bg-ink); color: var(--bg-paper); }
+
+  .stamp-btn { transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease, color 0.2s ease; }
+  .stamp-btn:hover { transform: rotate(1.5deg) translateY(-2px); box-shadow: 0 7px 14px rgba(0, 0, 0, 0.22); background: var(--bg-ink); color: var(--bg-paper); }
+
+  .chip { transition: opacity 0.15s ease, transform 0.15s ease, background 0.15s ease; }
+  .chip:hover { opacity: 1; transform: rotate(-1.5deg) translateY(-1px); background: rgba(255, 255, 255, 0.5); box-shadow: 0 3px 8px rgba(0,0,0,0.12); }
+
+  .tab { transition: opacity 0.15s ease, background 0.2s ease, transform 0.12s ease; }
+  .tab:hover { opacity: 0.95; background: rgba(255, 255, 255, 0.5); transform: translateY(-1px); }
+
+  .search-box input { transition: border-color 0.15s ease, border-style 0.15s ease, background 0.2s ease, box-shadow 0.2s ease; }
+  .search-box input:hover { border-style: solid; border-color: var(--bg-ink); background: rgba(255, 255, 255, 0.6); box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
+
+  .ctrl-btn { transition: transform 0.12s ease, background 0.2s ease, box-shadow 0.2s ease; }
+  .ctrl-btn:hover { transform: scale(1.1); background: rgba(255, 255, 255, 0.65); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18); }
+
+  .record-btn { transition: transform 0.15s ease, box-shadow 0.2s ease; }
+  .record-btn:hover { transform: scale(1.05); box-shadow: 0 6px 14px rgba(168, 80, 60, 0.3); }
+
+  .file-drop { transition: transform 0.2s ease, background 0.2s ease; }
+  .file-drop:hover { transform: rotate(-0.6deg); }
+
+  .mood-drawer-head h2 { transition: letter-spacing 0.25s ease; }
+  .mood-drawer-head:hover h2 { letter-spacing: 5px; }
+
+  .custom-chip button { transition: transform 0.12s ease; }
+  .custom-chip button:hover { transform: scale(1.25); }
+
+  .switch:hover .slider { box-shadow: 0 0 0 5px rgba(90, 70, 40, 0.14); }
+}
