@@ -42,6 +42,7 @@ export async function checkHealth(workerUrl) {
 export async function analyzeMood(settings, payload) {
   const base = settings.workerUrl.replace(/\/+$/, '');
   const { ok, data } = await postJSON(base + '/analyze', {
+    accessCode: settings.accessCode || '',
     type: payload.type,
     text: payload.text || '',
     note: payload.note || '',
@@ -61,6 +62,7 @@ export async function analyzeMood(settings, payload) {
 export async function transcribeAudio(settings, audioDataUrl, mime) {
   const base = settings.workerUrl.replace(/\/+$/, '');
   const { ok, data } = await postJSON(base + '/transcribe', {
+    accessCode: settings.accessCode || '',
     audioDataUrl,
     mime: mime || 'audio/webm',
   });
@@ -71,7 +73,7 @@ export async function transcribeAudio(settings, audioDataUrl, mime) {
 // 链接抓取标题/简介
 export async function fetchLink(settings, url) {
   const base = settings.workerUrl.replace(/\/+$/, '');
-  const { ok, data } = await postJSON(base + '/fetch', { url });
+  const { ok, data } = await postJSON(base + '/fetch', { accessCode: settings.accessCode || '', url });
   if (!ok) return { ok: false, error: data.error || 'network' };
   return { ok: true, title: data.title || '', description: data.description || '' };
 }

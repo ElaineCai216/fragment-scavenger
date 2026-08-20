@@ -2,3 +2,14 @@ name = "fragment-scavenger-ai"
 main = "index.js"
 compatibility_date = "2025-01-01"
 workers_dev = true
+
+# 可选 vars（在 Dashboard 或 `wrangler deploy --var` 配置）：
+#   BASE_URL          默认 https://api.openai.com/v1（换 DeepSeek/Kimi 等时设置）
+#   MODEL             默认 gpt-4o-mini（需支持图片）
+#   TRANSCRIBE_MODEL  默认 whisper-1
+#   ALLOWED_ORIGINS   允许的前端来源，逗号分隔；留空 = 允许所有
+
+# 必填 secrets（不要写在这里）：
+#   npx wrangler secret put API_KEY
+# 可选 secrets：
+#   npx wrangler secret put ACCESS_CODE

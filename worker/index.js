@@ -1,28 +1,22 @@
-// 碎片拾荒者 · AI 代理（Cloudflare Worker）
-// 隐藏大模型 API Key；前端只调用本 Worker。可选部署，不部署不影响网页。
-//
-// 环境变量（在 Cloudflare 中配置）：
-//   API_KEY（或 OPENAI_API_KEY / DEEPSEEK_API_KEY）  大模型密钥
-//   BASE_URL      （可选）OpenAI 兼容接口地址，默认 https://api.openai.com/v1
-//   MODEL         （可选）视觉/文本模型，默认 gpt-4o-mini
-//   TRANSCRIBE_MODEL （可选）语音转写模型，默认 whisper-1
-//   ALLOWED_ORIGIN （可选）允许的前端来源，逗号分隔；留空则允许所有来源
-
-function corsHeaders(env, request) {
-  const origin = request.headers.get('Origin');
-  const allowed = (env.ALLOWED_ORIGIN || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const allowOrigin = allowed.length === 0 ? '*' : origin && allowed.includes(origin) ? origin : '';
-  const headers = {
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Max-Age': '86400',
-  };
-  if (allowOrigin) headers['Access-Control-Allow-Origin'] = allowOrigin;
-  return headers;
-}
+/**
+ * 碎片拾荒者 · AI 代理（Cloudflare Worker）
+ * 模式与「苏格拉底提问词」的 Worker 一致：
+ *   - POST /analyze    文字/图片/语音转写/链接 -> 建议氛围（1-3 个）
+ *   - POST /transcribe 语音 -> 文本（上游不支持时返回 not-supported，前端保留原声）
+ *   - POST /fetch      服务端抓取链接标题/简介（绕过浏览器 CORS）
+ *   - GET  /health     设置页连通性自检
+ *
+ * 环境变量 / Secrets：
+ *   - API_KEY        （secret，必填）上游模型的 API Key（OpenAI 兼容）
+ *   - BASE_URL       （可选）OpenAI 兼容接口地址，默认 https://api.openai.com/v1
+ *   - MODEL          （可选）视觉/文本模型，默认 gpt-4o-mini（需支持图片）
+ *   - TRANSCRIBE_MODEL（可选）语音转写模型，默认 whisper-1
+ *   - ACCESS_CODE    （可选）访问码，设置了则 /analyze /transcribe /fetch 必须携带
+ *   - ALLOWED_ORIGINS 或 ALLOWED_ORIGIN（可选）允许的 CORS 来源，逗号分隔；留空则允许所有
+ */
+const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
+const MAX_BODY = 2_500_000;   // 请求体上限 ~2.5MB
+const FETCH_TIMEOUT_MS = 20000;
 
 function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
@@ -31,23 +25,48 @@ function json(data, status = 200, extraHeaders = {}) {
   });
 }
 
+function corsHeaders(env) {
+  const origins = (env.ALLOWED_ORIGINS || env.ALLOWED_ORIGIN || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const origin = origins.length ? origins.join(', ') : '*';
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
 function apiKey(env) {
   return env.API_KEY || env.OPENAI_API_KEY || env.DEEPSEEK_API_KEY || '';
 }
 
 function baseUrl(env) {
-  return (env.BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  return (env.BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
 }
 
-async function readBody(request) {
+async function readJson(request) {
+  const len = Number(request.headers.get('content-length') || 0);
+  if (len > MAX_BODY) return json({ ok: false, error: 'too_large' }, 413);
+  const raw = await request.text();
+  if (raw.length > MAX_BODY) return json({ ok: false, error: 'too_large' }, 413);
   try {
-    return await request.json();
+    return JSON.parse(raw);
   } catch {
-    return null;
+    return json({ ok: false, error: 'bad_request' }, 400);
   }
 }
 
-// ---------- /analyze：文字/图片/语音转写/链接 -> 建议氛围 ----------
+function checkAccess(env, body) {
+  if (env.ACCESS_CODE && (!body || body.accessCode !== env.ACCESS_CODE)) {
+    return json({ ok: false, error: 'access_denied', message: '访问码错误或无权限' }, 403);
+  }
+  return null;
+}
+
+// ---------- /analyze ----------
 function buildAnalyzeMessages(body) {
   const allowed = Array.isArray(body.allowedMoods) && body.allowedMoods.length
     ? body.allowedMoods
@@ -83,29 +102,25 @@ function parseMoods(raw, allowed) {
     if (Array.isArray(obj.moods)) moods = obj.moods;
     else if (typeof obj === 'string') moods = JSON.parse(obj);
   } catch {
-    // 宽松解析：从返回文本里找氛围词
     for (const w of allowed) {
       if (text.includes(w)) moods.push(w);
     }
   }
-  const valid = moods
-    .map((w) => String(w).trim())
-    .filter((w) => allowed.includes(w));
+  const valid = moods.map((w) => String(w).trim()).filter((w) => allowed.includes(w));
   return [...new Set(valid)].slice(0, 3);
 }
 
-async function analyze(env, body) {
+async function handleAnalyze(env, body) {
   const key = apiKey(env);
-  if (!key) return { ok: false, error: 'missing-api-key' };
+  if (!key) return json({ ok: false, error: 'missing-api-key', message: 'Worker 尚未配置 API Key' }, 503);
   const { system, userContent } = buildAnalyzeMessages(body);
-  const { base, model } = { base: baseUrl(env), model: env.MODEL || 'gpt-4o-mini' };
   let res;
   try {
-    res = await fetch(`${base}/chat/completions`, {
+    res = await fetch(`${baseUrl(env)}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       body: JSON.stringify({
-        model,
+        model: env.MODEL || 'gpt-4o-mini',
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: userContent },
@@ -115,25 +130,26 @@ async function analyze(env, body) {
       }),
     });
   } catch {
-    return { ok: false, error: 'upstream-network' };
+    return json({ ok: false, error: 'upstream-network', message: '无法连接上游模型' }, 502);
   }
-  if (!res.ok) return { ok: false, error: `upstream-${res.status}` };
+  if (!res.ok) return json({ ok: false, error: `upstream-${res.status}`, message: `上游模型返回 ${res.status}` }, 502);
   const data = await res.json().catch(() => ({}));
   const raw = data?.choices?.[0]?.message?.content || '';
   const moods = parseMoods(raw, body.allowedMoods || []);
-  return { ok: true, moods };
+  if (!moods.length) return json({ ok: false, error: 'empty', message: '没有识别出氛围' }, 502);
+  return json({ ok: true, moods });
 }
 
-// ---------- /transcribe：语音转写 ----------
-async function transcribe(env, body) {
+// ---------- /transcribe ----------
+async function handleTranscribe(env, body) {
   const key = apiKey(env);
-  if (!key) return { ok: false, error: 'missing-api-key' };
-  if (!body.audioDataUrl) return { ok: false, error: 'missing-audio' };
+  if (!key) return json({ ok: false, error: 'missing-api-key', message: 'Worker 尚未配置 API Key' }, 503);
+  if (!body.audioDataUrl) return json({ ok: false, error: 'missing-audio' }, 400);
   const model = env.TRANSCRIBE_MODEL || 'whisper-1';
   const mime = body.mime || 'audio/webm';
   const ext = mime.includes('ogg') ? 'ogg' : mime.includes('mp4') ? 'm4a' : mime.includes('wav') ? 'wav' : 'webm';
   const base64 = String(body.audioDataUrl).split(',')[1] || '';
-  if (!base64) return { ok: false, error: 'bad-audio-data' };
+  if (!base64) return json({ ok: false, error: 'bad-audio-data' }, 400);
   const bin = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
   const form = new FormData();
   form.append('file', new Blob([bin], { type: mime }), `voice.${ext}`);
@@ -146,16 +162,19 @@ async function transcribe(env, body) {
       body: form,
     });
   } catch {
-    return { ok: false, error: 'upstream-network' };
+    return json({ ok: false, error: 'upstream-network', message: '无法连接上游模型' }, 502);
   }
-  if (res.status === 404 || res.status === 400) return { ok: false, error: 'not-supported' };
-  if (!res.ok) return { ok: false, error: `upstream-${res.status}` };
+  if (res.status === 404 || res.status === 400) {
+    return json({ ok: false, error: 'not-supported', message: '上游不支持语音转写' }, 502);
+  }
+  if (!res.ok) return json({ ok: false, error: `upstream-${res.status}`, message: `上游返回 ${res.status}` }, 502);
   const data = await res.json().catch(() => ({}));
   const text = (data?.text || '').trim();
-  return text ? { ok: true, text } : { ok: false, error: 'empty' };
+  if (!text) return json({ ok: false, error: 'empty' }, 502);
+  return json({ ok: true, text });
 }
 
-// ---------- /fetch：链接抓标题/简介 ----------
+// ---------- /fetch ----------
 function stripHtml(s) {
   return String(s || '')
     .replace(/<[^>]*>/g, ' ')
@@ -167,20 +186,31 @@ function stripHtml(s) {
     .trim();
 }
 
-async function fetchMeta(url) {
-  if (!/^https?:\/\//i.test(url)) return { ok: false, error: 'bad-url' };
+async function handleFetch(env, body) {
+  let url = String(body.url || '').trim();
+  try {
+    const u = new URL(url);
+    if (!/^https?:$/.test(u.protocol)) throw new Error('protocol');
+    url = u.href;
+  } catch {
+    return json({ ok: false, error: 'bad_url', message: '请输入合法的 http/https 网址' }, 400);
+  }
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 15000);
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       redirect: 'follow',
       signal: ctrl.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+        Accept: 'text/html,text/plain,*/*',
+      },
       cf: { cacheTtl: 300, cacheEverything: true },
     });
-    if (!res.ok) return { ok: false, error: `http-${res.status}` };
-    const type = res.headers.get('content-type') || '';
+    if (!res.ok) return json({ ok: false, error: `http-${res.status}`, message: `目标站点返回 ${res.status}` }, 502);
+    const type = (res.headers.get('content-type') || '').toLowerCase();
     if (!type.includes('text/html') && !type.includes('application/xhtml')) {
-      return { ok: false, error: 'not-html' };
+      return json({ ok: false, error: 'not-html', message: '该链接不是网页内容' }, 415);
     }
     const html = (await res.text()).slice(0, 200000);
     const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '';
@@ -188,9 +218,10 @@ async function fetchMeta(url) {
       (html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i) || [])[1] ||
       (html.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i) || [])[1] ||
       '';
-    return { ok: true, title: stripHtml(title), description: stripHtml(desc).slice(0, 300) };
-  } catch {
-    return { ok: false, error: 'fetch-failed' };
+    return json({ ok: true, title: stripHtml(title).slice(0, 160), description: stripHtml(desc).slice(0, 300) });
+  } catch (e) {
+    if (e.name === 'AbortError') return json({ ok: false, error: 'timeout', message: '抓取超时' }, 504);
+    return json({ ok: false, error: 'fetch-failed', message: '无法访问该网址' }, 502);
   } finally {
     clearTimeout(timer);
   }
@@ -200,35 +231,45 @@ async function fetchMeta(url) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const cors = corsHeaders(env, request);
-    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-
-    if (request.method === 'GET' && url.pathname === '/health') {
-      return json(
-        { ok: true, app: 'fragment-scavenger-ai', configured: Boolean(apiKey(env)) },
-        200,
-        cors
-      );
+    const cors = corsHeaders(env);
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: cors });
     }
 
-    if (request.method !== 'POST') {
-      return json({ ok: false, error: 'method-not-allowed' }, 405, cors);
+    try {
+      if (url.pathname === '/health' && request.method === 'GET') {
+        return json({ ok: true, app: 'fragment-scavenger-ai', hasKey: Boolean(apiKey(env)), configured: Boolean(apiKey(env)) }, 200, cors);
+      }
+
+      if (request.method !== 'POST') {
+        return json({ ok: false, error: 'method-not-allowed' }, 405, cors);
+      }
+
+      const body = await readJson(request);
+      if (body instanceof Response) {
+        for (const [k, v] of Object.entries(cors)) body.headers.set(k, v);
+        return body;
+      }
+      const denied = checkAccess(env, body);
+      if (denied) {
+        for (const [k, v] of Object.entries(cors)) denied.headers.set(k, v);
+        return denied;
+      }
+
+      let result;
+      if (url.pathname === '/analyze') {
+        result = await handleAnalyze(env, body);
+      } else if (url.pathname === '/transcribe') {
+        result = await handleTranscribe(env, body);
+      } else if (url.pathname === '/fetch') {
+        result = await handleFetch(env, body);
+      } else {
+        return json({ ok: false, error: 'not_found', message: '未知路径' }, 404, cors);
+      }
+      for (const [k, v] of Object.entries(cors)) result.headers.set(k, v);
+      return result;
+    } catch (e) {
+      return json({ ok: false, error: 'internal', message: 'Worker 内部错误：' + (e && e.message ? e.message : e) }, 500, cors);
     }
-
-    const body = await readBody(request);
-    if (!body) return json({ ok: false, error: 'bad-body' }, 400, cors);
-
-    let result;
-    if (url.pathname === '/analyze') {
-      result = await analyze(env, body);
-    } else if (url.pathname === '/transcribe') {
-      result = await transcribe(env, body);
-    } else if (url.pathname === '/fetch') {
-      result = await fetchMeta(body.url);
-    } else {
-      return json({ ok: false, error: 'not-found' }, 404, cors);
-    }
-
-    return json(result.ok ? { ok: true, ...result } : { ok: false, error: result.error }, result.ok ? 200 : 502, cors);
   },
 };

@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = {
   sound: true,      // 点击音效
   music: true,      // 幻灯片钢琴曲
   workerUrl: '',    // Cloudflare Worker 地址（留空 = 纯手动模式）
+  accessCode: '',   // Worker 访问码（可选，与 ACCESS_CODE 一致）
   customMoods: [],  // 自定义氛围词
 };
 

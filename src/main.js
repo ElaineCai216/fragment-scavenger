@@ -124,6 +124,10 @@ function bindEvents() {
     state.settings.workerUrl = e.target.value.trim();
     store.saveSettings(state.settings);
   });
+  $('#set-access-code').addEventListener('input', (e) => {
+    state.settings.accessCode = e.target.value.trim();
+    store.saveSettings(state.settings);
+  });
   $('#btn-test-worker').addEventListener('click', testWorker);
   $('#btn-add-mood').addEventListener('click', addCustomMood);
   $('#set-new-mood').addEventListener('keydown', (e) => {
@@ -549,6 +553,7 @@ function openSettings() {
   $('#set-sound').checked = state.settings.sound;
   $('#set-music').checked = state.settings.music;
   $('#set-worker-url').value = state.settings.workerUrl || '';
+  $('#set-access-code').value = state.settings.accessCode || '';
   renderCustomMoodChips();
   setStatus('#settings-status', '');
   $('#settings-overlay').classList.remove('hidden');
