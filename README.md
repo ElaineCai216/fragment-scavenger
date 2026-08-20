@@ -26,6 +26,14 @@ npm run preview    # 本地预览构建产物
 
 自检：打开 `index.html?selftest`（开发时 `http://localhost:5173/?selftest`）。
 
+## 已部署状态
+
+- 线上站点：https://elainecai216.github.io/fragment-scavenger/
+- AI Worker：https://fragment-scavenger-ai.elainecai2806.workers.dev
+- Worker 已配置 `API_KEY` secret，上游默认 DeepSeek（`BASE_URL=https://api.deepseek.com`，`MODEL=deepseek-chat`）。
+- 注意：DeepSeek `deepseek-chat` 不支持看图，照片氛围请手动选择；DeepSeek 无语音转写接口，语音只保留原声。若想启用照片识别/语音转写，把 Worker 的 `BASE_URL`/`MODEL`/`TRANSCRIBE_MODEL` 换成支持视觉与转写的 OpenAI 兼容模型即可。
+- 网站 ⚙ 设置里填 Worker 地址即可用「✨ 让 AI 猜」；未配置访问码时「访问码」留空。
+
 ## 启用 AI（可选）
 
 1. 部署 Worker：
